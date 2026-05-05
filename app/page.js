@@ -82,6 +82,7 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   async function loadItems() {
     setLoading(true);
@@ -94,6 +95,33 @@ export default function Home() {
   useEffect(() => {
     loadItems();
   }, []);
+
+  // Esc closes the mobile drawer; desktop ignores it so the always-visible
+  // editor doesn't blow away the user's draft on a stray keypress.
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    function onKey(event) {
+      if (event.key !== "Escape") return;
+      if (typeof window === "undefined") return;
+      if (window.matchMedia("(max-width: 1179px)").matches) {
+        closeDrawer();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
+
+  // Lock body scroll while the drawer is open, but only on the breakpoints
+  // where the drawer is actually overlaying the page.
+  useEffect(() => {
+    if (!drawerOpen || typeof window === "undefined") return undefined;
+    if (!window.matchMedia("(max-width: 1179px)").matches) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [drawerOpen]);
 
   const year = selectedMonth.getFullYear();
   const monthIndex = selectedMonth.getMonth();
@@ -142,6 +170,7 @@ export default function Home() {
     setEditingId(null);
     setDraft({ ...blankForm, type, startDate: date });
     setError("");
+    setDrawerOpen(true);
   }
 
   function editItem(item) {
@@ -154,6 +183,14 @@ export default function Home() {
       startDate: item.startDate,
       recurrenceMonths: Number(item.recurrenceMonths || 0)
     });
+    setError("");
+    setDrawerOpen(true);
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+    setEditingId(null);
+    setDraft(blankForm);
     setError("");
   }
 
@@ -394,7 +431,7 @@ export default function Home() {
           </section>
         </div>
 
-        <aside className="side-rail">
+        <aside className={`side-rail${drawerOpen ? " drawer-open" : ""}`}>
           <section className="panel rise rise-3" aria-label="Selected day">
             <div className="panel-head">
               <div className="stack">
@@ -422,7 +459,10 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="panel rise rise-4" aria-label={editingId ? "Edit flow" : "Create flow"}>
+          <section
+            className={`panel rise rise-4 form-panel${editingId ? " is-editing" : ""}`}
+            aria-label={editingId ? "Edit flow" : "Create flow"}
+          >
             <div className="panel-head">
               <div className="stack">
                 <p className="eyebrow">{editingId ? "Edit flow" : "Create flow"}</p>
@@ -430,11 +470,14 @@ export default function Home() {
                   {editingId ? draft.name || <em>Untitled</em> : <>New <em>entry</em></>}
                 </h2>
               </div>
-              {editingId && (
-                <button className="icon-button small" onClick={() => startNew()} aria-label="Close editor">
-                  <X size={15} />
-                </button>
-              )}
+              <button
+                type="button"
+                className="icon-button small editor-close"
+                onClick={closeDrawer}
+                aria-label="Close editor"
+              >
+                <X size={15} />
+              </button>
             </div>
 
             <form className="flow-form" onSubmit={saveItem}>
@@ -573,6 +616,14 @@ export default function Home() {
         <span><strong>SubFlow</strong> - local-first finance ledger</span>
         <span>{items.length.toString().padStart(3, "0")} flows / {monthLabelShort}</span>
       </footer>
+
+      <button
+        type="button"
+        className={`drawer-backdrop${drawerOpen ? " is-open" : ""}`}
+        onClick={closeDrawer}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
     </main>
   );
 }

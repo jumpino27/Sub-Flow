@@ -1183,3 +1183,199 @@ textarea:focus-visible {
     padding: 5px 5px 4px;
   }
 }
+
+/* ---------- mobile / tablet drawer ---------- */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(15, 17, 19, 0.42);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms var(--ease-editorial);
+}
+
+.drawer-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (min-width: 1180px) {
+  .drawer-backdrop {
+    display: none;
+  }
+}
+
+@media (max-width: 1179px) {
+  .form-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+    width: min(440px, 100vw);
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    padding: 22px 22px 0;
+    background: var(--paper);
+    border-top: 0;
+    border-left: 1px solid var(--rule-strong);
+    box-shadow: -28px 0 60px -28px rgba(15, 17, 19, 0.45);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition:
+      transform 360ms var(--ease-editorial),
+      visibility 0s linear 360ms;
+  }
+
+  /* The page-load rise animation forces translateY(0) on completion which would
+     pull the drawer back on-screen. Disable rise on the form-panel below 1180px;
+     the drawer slide-in is its own entrance. */
+  .form-panel.rise {
+    animation: none;
+    opacity: 1;
+  }
+
+  .side-rail.drawer-open .form-panel {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 360ms var(--ease-editorial);
+  }
+
+  .form-panel .panel-head {
+    flex: 0 0 auto;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 14px;
+  }
+
+  .editor-close {
+    width: 40px;
+    min-height: 40px;
+  }
+
+  .form-panel .flow-form {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin: 0 -22px;
+    padding: 0 22px 12px;
+  }
+
+  .form-panel .form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin: 0 -22px;
+    padding: 14px 22px calc(14px + env(safe-area-inset-bottom, 0px));
+    background: var(--paper);
+    border-top: 1px solid var(--rule);
+  }
+
+  .form-panel .save-button {
+    flex: 1 1 auto;
+  }
+
+  .form-panel .danger-button {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 1179px) and (prefers-reduced-motion: reduce) {
+  .form-panel,
+  .drawer-backdrop {
+    transition: none !important;
+  }
+}
+
+/* ---------- compact laptop fit (short heights) ---------- */
+@media (min-width: 1180px) and (max-height: 820px) {
+  .app-shell {
+    padding: 22px 32px 56px;
+  }
+
+  .masthead {
+    padding-bottom: 14px;
+  }
+
+  .brand-mark {
+    width: 56px;
+    height: 56px;
+  }
+
+  .wordmark {
+    font-size: clamp(30px, 4.4vw, 44px);
+  }
+
+  .metric-row {
+    margin-top: 18px;
+  }
+
+  .metric {
+    padding: 14px 22px;
+  }
+
+  .metric-value {
+    font-size: clamp(28px, 3.4vw, 38px);
+  }
+
+  .workspace-grid {
+    margin-top: 22px;
+    gap: 28px;
+  }
+
+  .workspace-stack {
+    gap: 22px;
+  }
+
+  .side-rail {
+    gap: 20px;
+  }
+
+  .panel {
+    padding-top: 14px;
+  }
+
+  .panel-head {
+    margin-bottom: 10px;
+  }
+
+  .day-cell {
+    min-height: 88px;
+    padding: 8px 9px 7px;
+  }
+
+  .chart-wrap {
+    height: 240px;
+  }
+
+  .list-scroll {
+    max-height: 260px;
+  }
+
+  .flow-form {
+    gap: 12px;
+  }
+
+  .flow-form input,
+  .flow-form select,
+  .flow-form textarea {
+    min-height: 38px;
+  }
+
+  .flow-form textarea {
+    min-height: 70px;
+  }
+
+  .app-foot {
+    margin-top: 40px;
+  }
+}
