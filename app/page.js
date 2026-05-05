@@ -159,16 +159,43 @@ export default function Home() {
     }, {});
   }, [activeMonthOccurrences]);
 
+  function blankDraft(type = "expense", date = selectedDay) {
+    return { ...blankForm, type, startDate: date };
+  }
+
+  function selectDay(iso) {
+    setSelectedDay(iso);
+    setDraft((current) => ({ ...current, startDate: iso }));
+  }
+
+  function selectCalendarDate(date) {
+    const iso = toISODate(date);
+    selectDay(iso);
+    if (date.getFullYear() !== year || date.getMonth() !== monthIndex) {
+      setSelectedMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+    }
+  }
+
+  function changeDraftDate(iso) {
+    setDraft((current) => ({ ...current, startDate: iso }));
+    const parsed = parseISODate(iso);
+    if (!parsed) return;
+    setSelectedDay(iso);
+    setSelectedMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+  }
+
   function shiftMonth(amount) {
     const next = new Date(year, monthIndex + amount, 1);
+    const nextDay = next.getFullYear() === today.getFullYear() && next.getMonth() === today.getMonth()
+      ? todayISO
+      : toISODate(next);
     setSelectedMonth(next);
-    const shouldUseToday = next.getFullYear() === today.getFullYear() && next.getMonth() === today.getMonth();
-    setSelectedDay(shouldUseToday ? todayISO : toISODate(next));
+    selectDay(nextDay);
   }
 
   function startNew(type = "expense", date = selectedDay) {
     setEditingId(null);
-    setDraft({ ...blankForm, type, startDate: date });
+    setDraft(blankDraft(type, date));
     setError("");
     setDrawerOpen(true);
   }
@@ -190,7 +217,7 @@ export default function Home() {
   function closeDrawer() {
     setDrawerOpen(false);
     setEditingId(null);
-    setDraft(blankForm);
+    setDraft(blankDraft("expense", selectedDay));
     setError("");
   }
 
@@ -198,6 +225,7 @@ export default function Home() {
     event.preventDefault();
     setSaving(true);
     setError("");
+    const wasEditing = Boolean(editingId);
 
     const response = await fetch(editingId ? `/api/items/${editingId}` : "/api/items", {
       method: editingId ? "PUT" : "POST",
@@ -213,15 +241,20 @@ export default function Home() {
     }
 
     await loadItems();
-    setEditingId(data.item.id);
-    setDraft({
-      type: data.item.type,
-      name: data.item.name,
-      description: data.item.description,
-      amount: String(data.item.amount),
-      startDate: data.item.startDate,
-      recurrenceMonths: Number(data.item.recurrenceMonths || 0)
-    });
+    if (wasEditing) {
+      setEditingId(data.item.id);
+      setDraft({
+        type: data.item.type,
+        name: data.item.name,
+        description: data.item.description,
+        amount: String(data.item.amount),
+        startDate: data.item.startDate,
+        recurrenceMonths: Number(data.item.recurrenceMonths || 0)
+      });
+    } else {
+      setEditingId(null);
+      setDraft(blankDraft(data.item.type, data.item.startDate || selectedDay));
+    }
     setSaving(false);
   }
 
@@ -267,7 +300,7 @@ export default function Home() {
             className="today-button"
             onClick={() => {
               setSelectedMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-              setSelectedDay(todayISO);
+              selectDay(todayISO);
             }}
           >
             <CalendarDays size={15} />
@@ -345,12 +378,7 @@ export default function Home() {
                       isToday ? "is-today" : "",
                       isSelected ? "is-selected" : ""
                     ].filter(Boolean).join(" ")}
-                    onClick={() => {
-                      setSelectedDay(iso);
-                      if (!isCurrentMonth) {
-                        setSelectedMonth(new Date(date.getFullYear(), date.getMonth(), 1));
-                      }
-                    }}
+                    onClick={() => selectCalendarDate(date)}
                     aria-label={date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
                     aria-pressed={isSelected}
                   >
@@ -427,6 +455,20 @@ export default function Home() {
                 <span className="lg-income">Income</span>
                 <span className="lg-expense">Expenses</span>
               </div>
+              <div className="month-money-strip" aria-label="Monthly saved and spent totals">
+                {chartData.map((row) => {
+                  const balanceIsPositive = Number(row.balance) >= 0;
+                  return (
+                    <div className="month-money" key={row.month}>
+                      <span className="month-money-name">{row.month}</span>
+                      <span className={balanceIsPositive ? "month-saved" : "month-saved negative"}>
+                        {balanceIsPositive ? "+" : "-"}{formatMoney(Math.abs(row.balance))}
+                      </span>
+                      <span className="month-spent">-{formatMoney(row.expense)}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </section>
         </div>
@@ -453,7 +495,7 @@ export default function Home() {
                 <EmptyState title="Nothing scheduled" />
               ) : (
                 dayOccurrences.map((item) => (
-                  <FlowRow key={`${item.id}-${item.occurrenceDate}`} item={item} onClick={() => editItem(item)} />
+                  <FlowRow key={`${item.id}-${item.occurrenceDate}`} item={item} onEdit={() => editItem(item)} />
                 ))
               )}
             </div>
@@ -539,7 +581,7 @@ export default function Home() {
                   <input
                     type="date"
                     value={draft.startDate}
-                    onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
+                    onChange={(event) => changeDraftDate(event.target.value)}
                     required
                   />
                 </label>
@@ -597,14 +639,14 @@ export default function Home() {
               />
             </div>
 
-            <div className="list-scroll">
+            <div className="list-scroll all-flows-list">
               {loading ? (
                 <EmptyState title="Loading flows" />
               ) : filteredItems.length === 0 ? (
                 <EmptyState title={query ? "No matches" : "No saved flows yet"} />
               ) : (
                 filteredItems.map((item) => (
-                  <FlowRow key={item.id} item={item} onClick={() => editItem(item)} editing={editingId === item.id} />
+                  <FlowRow key={item.id} item={item} onEdit={() => editItem(item)} editing={editingId === item.id} />
                 ))
               )}
             </div>
@@ -645,11 +687,11 @@ function Metric({ eyebrow, label, value, tone, icon: Icon }) {
   );
 }
 
-function FlowRow({ item, onClick, editing = false }) {
+function FlowRow({ item, onEdit, editing = false }) {
   const recurrence = Number(item.recurrenceMonths || 0);
 
   return (
-    <button className={`flow-row ${item.type} ${editing ? "editing" : ""}`} onClick={onClick}>
+    <div className={`flow-row ${item.type} ${editing ? "editing" : ""}`}>
       <span className="flow-icon">{item.type === "income" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}</span>
       <span className="flow-copy">
         <strong>{item.name || "Untitled"}</strong>
@@ -659,8 +701,10 @@ function FlowRow({ item, onClick, editing = false }) {
         </small>
       </span>
       <span className="flow-amount">{formatMoney(item.amount)}</span>
-      <Pencil className="flow-edit" size={13} />
-    </button>
+      <button type="button" className="flow-edit-button" onClick={onEdit} aria-label={`Edit ${item.name || "flow"}`}>
+        <Pencil size={13} />
+      </button>
+    </div>
   );
 }
 

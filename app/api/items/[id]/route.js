@@ -25,7 +25,8 @@ function normalizePayload(payload) {
 }
 
 export async function GET(_request, { params }) {
-  const item = await findItem(Number(params.id));
+  const { id } = await params;
+  const item = await findItem(Number(id));
 
   if (!item) {
     return NextResponse.json({ error: "Item not found." }, { status: 404 });
@@ -35,7 +36,8 @@ export async function GET(_request, { params }) {
 }
 
 export async function PUT(request, { params }) {
-  const id = Number(params.id);
+  const { id: rawId } = await params;
+  const id = Number(rawId);
   const existing = await findItem(id);
 
   if (!existing) {
@@ -70,7 +72,8 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(_request, { params }) {
-  const id = Number(params.id);
+  const { id: rawId } = await params;
+  const id = Number(rawId);
   const existing = await findItem(id);
 
   if (!existing) {

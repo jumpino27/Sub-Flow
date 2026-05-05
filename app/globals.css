@@ -306,7 +306,7 @@ button {
 .danger-button:focus-visible,
 .mini-nav button:focus-visible,
 .day-cell:focus-visible,
-.flow-row:focus-visible,
+.flow-edit-button:focus-visible,
 .segmented button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -746,6 +746,60 @@ textarea:focus-visible {
   background: var(--expense);
 }
 
+.month-money-strip {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(72px, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
+  overflow-x: auto;
+}
+
+.month-money {
+  min-width: 72px;
+  padding: 8px 6px 9px;
+  border-right: 1px solid var(--rule-soft);
+  background: rgba(255, 252, 244, 0.38);
+}
+
+.month-money:last-child {
+  border-right: 0;
+}
+
+.month-money-name,
+.month-saved,
+.month-spent {
+  display: block;
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.month-money-name {
+  margin-bottom: 5px;
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.month-saved,
+.month-spent {
+  font-size: clamp(9px, 0.8vw, 11px);
+  line-height: 1.45;
+}
+
+.month-saved {
+  color: var(--income);
+}
+
+.month-saved.negative,
+.month-spent {
+  color: var(--expense);
+}
+
 /* ---------- agenda + flow rows ---------- */
 .list-scroll {
   display: flex;
@@ -763,6 +817,14 @@ textarea:focus-visible {
 .list-scroll::-webkit-scrollbar-thumb {
   background: var(--rule);
   border-radius: 999px;
+}
+
+.all-flows-list {
+  max-height: 378px;
+}
+
+.all-flows-list .flow-row {
+  min-height: 58px;
 }
 
 .flow-row {
@@ -865,12 +927,21 @@ textarea:focus-visible {
   color: var(--expense);
 }
 
-.flow-edit {
+.flow-edit-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
   color: var(--rule-strong);
+  cursor: pointer;
   transition: color 200ms var(--ease-snap), transform 200ms var(--ease-snap);
 }
 
-.flow-row:hover .flow-edit {
+.flow-row:hover .flow-edit-button,
+.flow-edit-button:hover {
   color: var(--ink);
   transform: translateX(2px);
 }
@@ -1114,7 +1185,7 @@ textarea:focus-visible {
   .danger-button,
   .today-button,
   .segmented button,
-  .flow-edit {
+  .flow-edit-button {
     animation: none !important;
     transition: none !important;
   }
