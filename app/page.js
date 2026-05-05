@@ -1,5 +1,28 @@
 "use client";
 
+/*
+ * Composition sketch — first viewport
+ *
+ * The screen reads as a single editorial ledger spread on warm cream paper,
+ * not a stack of rounded SaaS cards. A thin masthead at the top carries an
+ * embossed brand mark on the left, the SubFlow wordmark set in Fraunces
+ * (italic accent on "Flow") with a small "personal ledger" eyebrow, and the
+ * month chooser on the right — all sharing one horizontal rule beneath. Below
+ * the masthead, three rule-bordered metric columns (income / expenses /
+ * monthly balance) read like newspaper deck stats, big serif numerals tracked
+ * tight, no boxed cards. Below that the eye drops to the dominant object: a
+ * dense, ledger-ruled infinite calendar with hairline rules, ink-on-cream
+ * day cells, today marked by a gold dot and a warm tint, and the selected
+ * day inverted to ink. A right rail (visible at xl+ as a sliver, stacked
+ * below on mobile) holds the selected-day agenda, the create/edit form, and
+ * a search-driven all-flows index. The yearly bar chart anchors the next
+ * scroll beat — visible just under the calendar fold to signal scrollable
+ * depth. Palette: warm cream paper, ink near-black, deep-teal as the single
+ * brand accent, income green and expense brick used only where functional,
+ * gold reserved for "today". Two type families: Fraunces (display + numerals)
+ * and Bricolage Grotesque (body); JetBrains Mono only for tabular numerals.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -83,6 +106,7 @@ export default function Home() {
   const totals = useMemo(() => monthTotals(items, year, monthIndex), [items, year, monthIndex]);
   const chartData = useMemo(() => yearSeries(items, year), [items, year]);
   const balance = totals.income - totals.expense;
+  const chartHasData = chartData.some((row) => Number(row.income) > 0 || Number(row.expense) > 0);
 
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -176,331 +200,396 @@ export default function Home() {
     await loadItems();
   }
 
+  const monthLabel = selectedMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const monthLabelShort = selectedMonth.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+
   return (
-    <main className="min-h-screen bg-[var(--page)] text-[var(--ink)]">
-      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="header-shell">
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="brand-mark">
-              <img src="/subflow-mark.png" alt="" />
-            </div>
-            <div className="min-w-0">
-              <p className="eyebrow">Local finance planner</p>
-              <h1 className="truncate font-display text-3xl font-semibold tracking-normal sm:text-5xl">SubFlow</h1>
-            </div>
+    <main className="app-shell">
+      <header className="masthead rise rise-1">
+        <div className="masthead-brand">
+          <div className="brand-mark" aria-hidden>
+            <img src="/subflow-mark.png" alt="" />
           </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button className="icon-button" onClick={() => shiftMonth(-1)} aria-label="Previous month">
-              <ArrowLeft size={18} />
-            </button>
-            <div className="month-chip">
-              {selectedMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-            </div>
-            <button className="icon-button" onClick={() => shiftMonth(1)} aria-label="Next month">
-              <ArrowRight size={18} />
-            </button>
-            <button
-              className="today-button"
-              onClick={() => {
-                setSelectedMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-                setSelectedDay(todayISO);
-              }}
-            >
-              <CalendarDays size={17} />
-              Today
-            </button>
+          <div className="masthead-words">
+            <p className="eyebrow with-rule">Personal ledger · est. {today.getFullYear()}</p>
+            <h1 className="wordmark">
+              Sub<em>Flow</em>
+            </h1>
           </div>
-        </header>
+        </div>
 
-        <section className="grid gap-3 md:grid-cols-3">
-          <MetricCard label="Income this month" value={formatMoney(totals.income)} tone="income" icon={TrendingUp} />
-          <MetricCard label="Expenses this month" value={formatMoney(totals.expense)} tone="expense" icon={TrendingDown} />
-          <MetricCard
-            label="Monthly balance"
-            value={formatMoney(balance)}
-            tone={balance >= 0 ? "income" : "expense"}
-            icon={CircleDollarSign}
-          />
-        </section>
+        <div className="masthead-meta">
+          <button className="icon-button" onClick={() => shiftMonth(-1)} aria-label="Previous month">
+            <ArrowLeft size={17} />
+          </button>
+          <div className="month-chip" aria-live="polite">{monthLabel}</div>
+          <button className="icon-button" onClick={() => shiftMonth(1)} aria-label="Next month">
+            <ArrowRight size={17} />
+          </button>
+          <button
+            className="today-button"
+            onClick={() => {
+              setSelectedMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+              setSelectedDay(todayISO);
+            }}
+          >
+            <CalendarDays size={15} />
+            Today
+          </button>
+        </div>
+      </header>
 
-        <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.4fr)_440px]">
-          <div className="space-y-5">
-            <div className="workspace-panel">
-              <div className="panel-title">
-                <div>
-                  <p className="eyebrow">Infinite calendar</p>
-                  <h2>{selectedMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
-                </div>
-                <button className="new-button" onClick={() => startNew("expense", selectedDay)}>
-                  <Plus size={18} />
-                  Add flow
+      <section className="metric-row rise rise-2" aria-label="Monthly summary">
+        <Metric
+          eyebrow="Income"
+          label={monthLabelShort}
+          value={formatMoney(totals.income)}
+          tone="income"
+          icon={TrendingUp}
+        />
+        <Metric
+          eyebrow="Expenses"
+          label={monthLabelShort}
+          value={formatMoney(totals.expense)}
+          tone="expense"
+          icon={TrendingDown}
+        />
+        <Metric
+          eyebrow="Net"
+          label={monthLabelShort}
+          value={formatMoney(balance)}
+          tone={balance >= 0 ? "income" : "expense"}
+          icon={CircleDollarSign}
+        />
+      </section>
+
+      <div className="workspace-grid">
+        <div className="workspace-stack">
+          <section className="panel rise rise-3" aria-label="Calendar">
+            <div className="panel-head">
+              <div className="stack">
+                <p className="eyebrow">Infinite calendar</p>
+                <h2 className="panel-title">
+                  {selectedMonth.toLocaleDateString(undefined, { month: "long" })} <em>{year}</em>
+                </h2>
+              </div>
+              <button className="new-button" onClick={() => startNew("expense", selectedDay)}>
+                <Plus size={16} />
+                New flow
+              </button>
+            </div>
+
+            <div className="calendar-grid weekday-grid">
+              {weekDays.map((day) => (
+                <div key={day}>{day}</div>
+              ))}
+            </div>
+
+            <div className="calendar-grid day-grid" role="grid">
+              {buildCalendarDays(selectedMonth).map((date) => {
+                const iso = toISODate(date);
+                const occurrences = occurrenceByDay[iso] || [];
+                const isCurrentMonth = date.getMonth() === monthIndex;
+                const isToday = iso === todayISO;
+                const isSelected = iso === selectedDay;
+                const incomeCount = occurrences.filter((item) => item.type === "income").length;
+                const expenseCount = occurrences.filter((item) => item.type === "expense").length;
+                const net = occurrences.reduce(
+                  (sum, item) => sum + (item.type === "income" ? Number(item.amount) : -Number(item.amount)),
+                  0
+                );
+
+                return (
+                  <button
+                    key={iso}
+                    className={[
+                      "day-cell",
+                      isCurrentMonth ? "" : "outside-month",
+                      isToday ? "is-today" : "",
+                      isSelected ? "is-selected" : ""
+                    ].filter(Boolean).join(" ")}
+                    onClick={() => {
+                      setSelectedDay(iso);
+                      if (!isCurrentMonth) {
+                        setSelectedMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                      }
+                    }}
+                    aria-label={date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                    aria-pressed={isSelected}
+                  >
+                    <span className="day-number">{date.getDate()}</span>
+                    {occurrences.length > 0 && (
+                      <span className="day-signals">
+                        {incomeCount > 0 && <span className="signal income">{incomeCount} in</span>}
+                        {expenseCount > 0 && <span className="signal expense">{expenseCount} out</span>}
+                      </span>
+                    )}
+                    {occurrences.length > 0 && <span className="day-net">{formatMoney(net)}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="panel rise rise-4" aria-label="Annual rhythm">
+            <div className="panel-head">
+              <div className="stack">
+                <p className="eyebrow">Annual rhythm</p>
+                <h2 className="panel-title">
+                  Income &amp; expenses <em>{year}</em>
+                </h2>
+              </div>
+              <div className="mini-nav" role="group" aria-label="Year navigation">
+                <button onClick={() => setSelectedMonth(new Date(year - 1, monthIndex, 1))} aria-label="Previous year">
+                  <ArrowLeft size={15} />
+                </button>
+                <button onClick={() => setSelectedMonth(new Date(year + 1, monthIndex, 1))} aria-label="Next year">
+                  <ArrowRight size={15} />
                 </button>
               </div>
-
-              <div className="calendar-grid weekday-grid">
-                {weekDays.map((day) => (
-                  <div key={day}>{day}</div>
-                ))}
-              </div>
-
-              <div className="calendar-grid">
-                {buildCalendarDays(selectedMonth).map((date) => {
-                  const iso = toISODate(date);
-                  const occurrences = occurrenceByDay[iso] || [];
-                  const isCurrentMonth = date.getMonth() === monthIndex;
-                  const isToday = iso === todayISO;
-                  const isSelected = iso === selectedDay;
-                  const incomeCount = occurrences.filter((item) => item.type === "income").length;
-                  const expenseCount = occurrences.filter((item) => item.type === "expense").length;
-                  const net = occurrences.reduce(
-                    (sum, item) => sum + (item.type === "income" ? Number(item.amount) : -Number(item.amount)),
-                    0
-                  );
-
-                  return (
-                    <button
-                      key={iso}
-                      className={[
-                        "day-cell",
-                        isCurrentMonth ? "" : "outside-month",
-                        isToday ? "is-today" : "",
-                        isSelected ? "is-selected" : ""
-                      ].join(" ")}
-                      onClick={() => {
-                        setSelectedDay(iso);
-                        if (!isCurrentMonth) {
-                          setSelectedMonth(new Date(date.getFullYear(), date.getMonth(), 1));
-                        }
-                      }}
-                    >
-                      <span className="day-number">{date.getDate()}</span>
-                      {occurrences.length > 0 && (
-                        <span className="day-signals">
-                          {incomeCount > 0 && <span className="signal income">{incomeCount}</span>}
-                          {expenseCount > 0 && <span className="signal expense">{expenseCount}</span>}
-                        </span>
-                      )}
-                      {occurrences.length > 0 && <span className="day-net">{formatMoney(net)}</span>}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
-
-            <div className="workspace-panel">
-              <div className="panel-title">
-                <div>
-                  <p className="eyebrow">Annual rhythm</p>
-                  <h2>{year} income and expenses</h2>
-                </div>
-                <div className="mini-nav">
-                  <button onClick={() => setSelectedMonth(new Date(year - 1, monthIndex, 1))} aria-label="Previous year">
-                    <ArrowLeft size={16} />
-                  </button>
-                  <button onClick={() => setSelectedMonth(new Date(year + 1, monthIndex, 1))} aria-label="Next year">
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-              </div>
+            <div className="chart-shell">
               <div className="chart-wrap">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="rgba(34, 47, 62, .10)" />
-                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#5b6472", fontSize: 12 }} />
+                  <BarChart data={chartData} margin={{ top: 12, right: 8, left: -12, bottom: 0 }} barCategoryGap={18}>
+                    <CartesianGrid vertical={false} stroke="rgba(26, 29, 31, 0.10)" strokeDasharray="2 4" />
+                    <XAxis
+                      dataKey="month"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: "var(--muted-strong)", fontSize: 11, fontFamily: "var(--font-mono)", letterSpacing: 1 }}
+                      dy={6}
+                    />
                     <YAxis
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#5b6472", fontSize: 12 }}
-                      tickFormatter={(value) => `$${value}`}
+                      tick={{ fill: "var(--muted-strong)", fontSize: 11, fontFamily: "var(--font-mono)" }}
+                      tickFormatter={(value) => `$${Math.round(value)}`}
+                      width={56}
                     />
                     <Tooltip
-                      cursor={{ fill: "rgba(17, 89, 89, .08)" }}
+                      cursor={{ fill: "rgba(19, 94, 79, 0.06)" }}
                       formatter={(value, name) => [formatMoney(value), name]}
                       contentStyle={{
-                        border: "1px solid rgba(20, 27, 36, .12)",
-                        borderRadius: 8,
-                        boxShadow: "0 12px 34px rgba(20, 27, 36, .14)"
+                        background: "var(--paper-strong)",
+                        border: "1px solid var(--rule-strong)",
+                        borderRadius: 2,
+                        fontFamily: "var(--font-body)",
+                        fontSize: 12,
+                        boxShadow: "0 16px 32px -20px rgba(26, 29, 31, 0.4)"
                       }}
+                      labelStyle={{ fontFamily: "var(--font-display)", fontWeight: 500, color: "var(--ink)" }}
                     />
-                    <Bar dataKey="income" name="Income" fill="#177b67" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="expense" name="Expenses" fill="#c25545" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="income" name="Income" fill="var(--income)" radius={[1, 1, 0, 0]} />
+                    <Bar dataKey="expense" name="Expenses" fill="var(--expense)" radius={[1, 1, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+                {!chartHasData && <div className="chart-empty">No flows recorded for {year} yet.</div>}
+              </div>
+              <div className="chart-legend">
+                <span className="lg-income">Income</span>
+                <span className="lg-expense">Expenses</span>
               </div>
             </div>
-          </div>
+          </section>
+        </div>
 
-          <aside className="side-rail">
-            <section className="workspace-panel">
-              <div className="panel-title compact">
-                <div>
-                  <p className="eyebrow">Selected day</p>
-                  <h2>
-                    {selectedDate.toLocaleDateString(undefined, {
-                      weekday: "long",
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric"
-                    })}
-                  </h2>
-                </div>
-                <button className="icon-button small" onClick={() => startNew("income", selectedDay)} aria-label="Add income">
-                  <Plus size={16} />
+        <aside className="side-rail">
+          <section className="panel rise rise-3" aria-label="Selected day">
+            <div className="panel-head">
+              <div className="stack">
+                <p className="eyebrow">Selected day</p>
+                <h2 className="panel-title">
+                  {selectedDate.toLocaleDateString(undefined, { weekday: "long" })}{" "}
+                  <em>
+                    {selectedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  </em>
+                </h2>
+              </div>
+              <button className="icon-button small" onClick={() => startNew("income", selectedDay)} aria-label="Add income on selected day">
+                <Plus size={15} />
+              </button>
+            </div>
+
+            <div className="list-scroll">
+              {dayOccurrences.length === 0 ? (
+                <EmptyState title="Nothing scheduled" />
+              ) : (
+                dayOccurrences.map((item) => (
+                  <FlowRow key={`${item.id}-${item.occurrenceDate}`} item={item} onClick={() => editItem(item)} />
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="panel rise rise-4" aria-label={editingId ? "Edit flow" : "Create flow"}>
+            <div className="panel-head">
+              <div className="stack">
+                <p className="eyebrow">{editingId ? "Edit flow" : "Create flow"}</p>
+                <h2 className="panel-title">
+                  {editingId ? draft.name || <em>Untitled</em> : <>New <em>entry</em></>}
+                </h2>
+              </div>
+              {editingId && (
+                <button className="icon-button small" onClick={() => startNew()} aria-label="Close editor">
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+
+            <form className="flow-form" onSubmit={saveItem}>
+              <div className="segmented" role="tablist" aria-label="Flow type">
+                <button
+                  type="button"
+                  className={draft.type === "income" ? "active income" : ""}
+                  onClick={() => setDraft((current) => ({ ...current, type: "income" }))}
+                  aria-pressed={draft.type === "income"}
+                >
+                  <TrendingUp size={15} />
+                  Income
+                </button>
+                <button
+                  type="button"
+                  className={draft.type === "expense" ? "active expense" : ""}
+                  onClick={() => setDraft((current) => ({ ...current, type: "expense" }))}
+                  aria-pressed={draft.type === "expense"}
+                >
+                  <TrendingDown size={15} />
+                  Expense
                 </button>
               </div>
 
-              <div className="agenda-list">
-                {dayOccurrences.length === 0 ? (
-                  <EmptyState title="No flows on this day" />
-                ) : (
-                  dayOccurrences.map((item) => <FlowRow key={`${item.id}-${item.occurrenceDate}`} item={item} onClick={() => editItem(item)} />)
-                )}
-              </div>
-            </section>
+              <label>
+                <span>Name</span>
+                <input
+                  value={draft.name}
+                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                  placeholder="Rent, Salary, Spotify…"
+                  required
+                />
+              </label>
 
-            <section className="workspace-panel">
-              <div className="panel-title compact">
-                <div>
-                  <p className="eyebrow">{editingId ? "Edit flow" : "Create flow"}</p>
-                  <h2>{editingId ? draft.name || "Untitled flow" : "New entry"}</h2>
-                </div>
-                {editingId && (
-                  <button className="icon-button small" onClick={() => startNew()} aria-label="Close editor">
-                    <X size={16} />
-                  </button>
-                )}
-              </div>
+              <label>
+                <span>Note</span>
+                <textarea
+                  value={draft.description}
+                  onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+                  rows={3}
+                  placeholder="Optional context"
+                />
+              </label>
 
-              <form className="flow-form" onSubmit={saveItem}>
-                <div className="segmented">
-                  <button
-                    type="button"
-                    className={draft.type === "income" ? "active income" : ""}
-                    onClick={() => setDraft((current) => ({ ...current, type: "income" }))}
-                  >
-                    <TrendingUp size={16} />
-                    Income
-                  </button>
-                  <button
-                    type="button"
-                    className={draft.type === "expense" ? "active expense" : ""}
-                    onClick={() => setDraft((current) => ({ ...current, type: "expense" }))}
-                  >
-                    <TrendingDown size={16} />
-                    Expense
-                  </button>
-                </div>
-
+              <div className="form-grid">
                 <label>
-                  <span>Name</span>
-                  <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required />
-                </label>
-
-                <label>
-                  <span>Description</span>
-                  <textarea
-                    value={draft.description}
-                    onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-                    rows={3}
+                  <span>Amount</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={draft.amount}
+                    onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
+                    required
                   />
                 </label>
-
-                <div className="form-grid">
-                  <label>
-                    <span>Amount</span>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={draft.amount}
-                      onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
-                      required
-                    />
-                  </label>
-                  <label>
-                    <span>Date</span>
-                    <input
-                      type="date"
-                      value={draft.startDate}
-                      onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
-                      required
-                    />
-                  </label>
-                </div>
-
                 <label>
-                  <span>Repeats</span>
-                  <select
-                    value={draft.recurrenceMonths}
-                    onChange={(event) => setDraft({ ...draft, recurrenceMonths: Number(event.target.value) })}
-                  >
-                    <option value={0}>One time only</option>
-                    {Array.from({ length: 12 }, (_, index) => index + 1).map((months) => (
-                      <option key={months} value={months}>
-                        Every {months} {months === 1 ? "month" : "months"}
-                      </option>
-                    ))}
-                  </select>
+                  <span>Date</span>
+                  <input
+                    type="date"
+                    value={draft.startDate}
+                    onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
+                    required
+                  />
                 </label>
+              </div>
 
-                {error && <p className="form-error">{error}</p>}
+              <label>
+                <span>Repeats</span>
+                <select
+                  value={draft.recurrenceMonths}
+                  onChange={(event) => setDraft({ ...draft, recurrenceMonths: Number(event.target.value) })}
+                >
+                  <option value={0}>One time only</option>
+                  {Array.from({ length: 12 }, (_, index) => index + 1).map((months) => (
+                    <option key={months} value={months}>
+                      Every {months} {months === 1 ? "month" : "months"}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-                <div className="form-actions">
-                  {editingId && (
-                    <button type="button" className="danger-button" onClick={deleteItem} disabled={saving}>
-                      <Trash2 size={16} />
-                      Delete
-                    </button>
-                  )}
-                  <button type="submit" className="save-button" disabled={saving}>
-                    {saving ? <RefreshCw className="spin" size={16} /> : <Check size={16} />}
-                    {editingId ? "Save changes" : "Create flow"}
+              {error && <p className="form-error" role="alert">{error}</p>}
+
+              <div className="form-actions">
+                {editingId && (
+                  <button type="button" className="danger-button" onClick={deleteItem} disabled={saving}>
+                    <Trash2 size={15} />
+                    Delete
                   </button>
-                </div>
-              </form>
-            </section>
-
-            <section className="workspace-panel">
-              <div className="panel-title compact">
-                <div>
-                  <p className="eyebrow">All flows</p>
-                  <h2>{items.length} saved</h2>
-                </div>
-              </div>
-
-              <div className="search-box">
-                <Search size={16} />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search flows" />
-              </div>
-
-              <div className="item-list">
-                {loading ? (
-                  <EmptyState title="Loading flows" />
-                ) : filteredItems.length === 0 ? (
-                  <EmptyState title="No saved flows" />
-                ) : (
-                  filteredItems.map((item) => <FlowRow key={item.id} item={item} onClick={() => editItem(item)} editing={editingId === item.id} />)
                 )}
+                <button type="submit" className="save-button" disabled={saving}>
+                  {saving ? <RefreshCw className="spin" size={15} /> : <Check size={15} />}
+                  {editingId ? "Save changes" : "Create flow"}
+                </button>
               </div>
-            </section>
-          </aside>
-        </section>
+            </form>
+          </section>
+
+          <section className="panel rise rise-4" aria-label="All flows">
+            <div className="panel-head">
+              <div className="stack">
+                <p className="eyebrow">All flows</p>
+                <h2 className="panel-title">
+                  {items.length} <em>saved</em>
+                </h2>
+              </div>
+            </div>
+
+            <div className="search-box">
+              <Search size={15} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search by name or note"
+                aria-label="Search flows"
+              />
+            </div>
+
+            <div className="list-scroll">
+              {loading ? (
+                <EmptyState title="Loading flows" />
+              ) : filteredItems.length === 0 ? (
+                <EmptyState title={query ? "No matches" : "No saved flows yet"} />
+              ) : (
+                filteredItems.map((item) => (
+                  <FlowRow key={item.id} item={item} onClick={() => editItem(item)} editing={editingId === item.id} />
+                ))
+              )}
+            </div>
+          </section>
+        </aside>
       </div>
+
+      <footer className="app-foot">
+        <span><strong>SubFlow</strong> — local-first finance ledger</span>
+        <span>{items.length.toString().padStart(3, "0")} flows · {monthLabelShort}</span>
+      </footer>
     </main>
   );
 }
 
-function MetricCard({ label, value, tone, icon: Icon }) {
+function Metric({ eyebrow, label, value, tone, icon: Icon }) {
   return (
-    <div className={`metric-card ${tone}`}>
+    <div className={`metric ${tone}`}>
       <div>
-        <p>{label}</p>
-        <strong>{value}</strong>
+        <div className="metric-head">
+          <span className="metric-tick">
+            <Icon size={15} />
+          </span>
+          <span className="eyebrow">{eyebrow}</span>
+        </div>
+        <span className="metric-value">{value}</span>
       </div>
-      <span>
-        <Icon size={22} />
-      </span>
+      <span className="metric-watermark">{label}</span>
     </div>
   );
 }
@@ -510,16 +599,16 @@ function FlowRow({ item, onClick, editing = false }) {
 
   return (
     <button className={`flow-row ${item.type} ${editing ? "editing" : ""}`} onClick={onClick}>
-      <span className="flow-icon">{item.type === "income" ? <TrendingUp size={16} /> : <TrendingDown size={16} />}</span>
+      <span className="flow-icon">{item.type === "income" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}</span>
       <span className="flow-copy">
-        <strong>{item.name}</strong>
+        <strong>{item.name || "Untitled"}</strong>
         <small>
-          <Clock3 size={13} />
+          <Clock3 size={11} />
           {recurrence === 0 ? "One time" : `Every ${recurrence} ${recurrence === 1 ? "month" : "months"}`}
         </small>
       </span>
       <span className="flow-amount">{formatMoney(item.amount)}</span>
-      <Pencil className="flow-edit" size={14} />
+      <Pencil className="flow-edit" size={13} />
     </button>
   );
 }
@@ -527,7 +616,7 @@ function FlowRow({ item, onClick, editing = false }) {
 function EmptyState({ title }) {
   return (
     <div className="empty-state">
-      <span />
+      <span className="pulse" aria-hidden />
       <p>{title}</p>
     </div>
   );
