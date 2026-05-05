@@ -1,13 +1,13 @@
 "use client";
 
 /*
- * Composition sketch — first viewport
+ * Composition sketch - first viewport
  *
  * The screen reads as a single editorial ledger spread on warm cream paper,
  * not a stack of rounded SaaS cards. A thin masthead at the top carries an
  * embossed brand mark on the left, the SubFlow wordmark set in Fraunces
  * (italic accent on "Flow") with a small "personal ledger" eyebrow, and the
- * month chooser on the right — all sharing one horizontal rule beneath. Below
+ * month chooser on the right - all sharing one horizontal rule beneath. Below
  * the masthead, three rule-bordered metric columns (income / expenses /
  * monthly balance) read like newspaper deck stats, big serif numerals tracked
  * tight, no boxed cards. Below that the eye drops to the dominant object: a
@@ -16,7 +16,7 @@
  * day inverted to ink. A right rail (visible at xl+ as a sliver, stacked
  * below on mobile) holds the selected-day agenda, the create/edit form, and
  * a search-driven all-flows index. The yearly bar chart anchors the next
- * scroll beat — visible just under the calendar fold to signal scrollable
+ * scroll beat - visible just under the calendar fold to signal scrollable
  * depth. Palette: warm cream paper, ink near-black, deep-teal as the single
  * brand accent, income green and expense brick used only where functional,
  * gold reserved for "today". Two type families: Fraunces (display + numerals)
@@ -211,7 +211,7 @@ export default function Home() {
             <img src="/subflow-mark.png" alt="" />
           </div>
           <div className="masthead-words">
-            <p className="eyebrow with-rule">Personal ledger · est. {today.getFullYear()}</p>
+            <p className="eyebrow with-rule">Personal ledger / est. {today.getFullYear()}</p>
             <h1 className="wordmark">
               Sub<em>Flow</em>
             </h1>
@@ -464,7 +464,7 @@ export default function Home() {
                 <input
                   value={draft.name}
                   onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                  placeholder="Rent, Salary, Spotify…"
+                  placeholder="Rent, Salary, Spotify..."
                   required
                 />
               </label>
@@ -570,8 +570,8 @@ export default function Home() {
       </div>
 
       <footer className="app-foot">
-        <span><strong>SubFlow</strong> — local-first finance ledger</span>
-        <span>{items.length.toString().padStart(3, "0")} flows · {monthLabelShort}</span>
+        <span><strong>SubFlow</strong> - local-first finance ledger</span>
+        <span>{items.length.toString().padStart(3, "0")} flows / {monthLabelShort}</span>
       </footer>
     </main>
   );
