@@ -1,32 +1,10 @@
 "use client";
 
-/*
- * Composition sketch - first viewport
- *
- * The screen reads as a single editorial ledger spread on warm cream paper,
- * not a stack of rounded SaaS cards. A thin masthead at the top carries an
- * embossed brand mark on the left, the SubFlow wordmark set in Fraunces
- * (italic accent on "Flow") with a small "personal ledger" eyebrow, and the
- * month chooser on the right - all sharing one horizontal rule beneath. Below
- * the masthead, three rule-bordered metric columns (income / expenses /
- * monthly balance) read like newspaper deck stats, big serif numerals tracked
- * tight, no boxed cards. Below that the eye drops to the dominant object: a
- * dense, ledger-ruled infinite calendar with hairline rules, ink-on-cream
- * day cells, today marked by a gold dot and a warm tint, and the selected
- * day inverted to ink. A right rail (visible at xl+ as a sliver, stacked
- * below on mobile) holds the selected-day agenda, the create/edit form, and
- * a search-driven all-flows index. The yearly bar chart anchors the next
- * scroll beat - visible just under the calendar fold to signal scrollable
- * depth. Palette: warm cream paper, ink near-black, deep-teal as the single
- * brand accent, income green and expense brick used only where functional,
- * gold reserved for "today". Two type families: Fraunces (display + numerals)
- * and Bricolage Grotesque (body); JetBrains Mono only for tabular numerals.
- */
-
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  BarChart3,
   CalendarDays,
   Check,
   CircleDollarSign,
@@ -76,6 +54,7 @@ export default function Home() {
   const [items, setItems] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState(todayISO);
+  const [hasActiveSelection, setHasActiveSelection] = useState(false);
   const [draft, setDraft] = useState(blankForm);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -83,6 +62,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("calendar");
 
   async function loadItems() {
     setLoading(true);
@@ -96,31 +76,18 @@ export default function Home() {
     loadItems();
   }, []);
 
-  // Esc closes the mobile drawer; desktop ignores it so the always-visible
-  // editor doesn't blow away the user's draft on a stray keypress.
+  // Close modal on Escape
   useEffect(() => {
-    if (!drawerOpen) return undefined;
+    if (!drawerOpen) return;
     function onKey(event) {
-      if (event.key !== "Escape") return;
-      if (typeof window === "undefined") return;
-      if (window.matchMedia("(max-width: 1179px)").matches) {
-        closeDrawer();
+      if (event.key === "Escape") {
+        setDrawerOpen(false);
+        setEditingId(null);
+        setError("");
       }
     }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [drawerOpen]);
-
-  // Lock body scroll while the drawer is open, but only on the breakpoints
-  // where the drawer is actually overlaying the page.
-  useEffect(() => {
-    if (!drawerOpen || typeof window === "undefined") return undefined;
-    if (!window.matchMedia("(max-width: 1179px)").matches) return undefined;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen]);
 
   const year = selectedMonth.getFullYear();
@@ -136,20 +103,23 @@ export default function Home() {
   const balance = totals.income - totals.expense;
   const chartHasData = chartData.some((row) => Number(row.income) > 0 || Number(row.expense) > 0);
 
+  // Items that have at least one occurrence in the active month.
+  // One-time payments from previous months are filtered out;
+  // recurring items applicable to this month are kept.
+  const monthlyItems = useMemo(() => {
+    const idsInMonth = new Set(activeMonthOccurrences.map((o) => o.id));
+    return items.filter((item) => idsInMonth.has(item.id));
+  }, [items, activeMonthOccurrences]);
+
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) {
-      return items;
-    }
-
-    return items.filter((item) =>
+    if (!needle) return monthlyItems;
+    return monthlyItems.filter((item) =>
       [item.name, item.description, item.type].some((value) =>
-        String(value || "")
-          .toLowerCase()
-          .includes(needle)
+        String(value || "").toLowerCase().includes(needle)
       )
     );
-  }, [items, query]);
+  }, [monthlyItems, query]);
 
   const occurrenceByDay = useMemo(() => {
     return activeMonthOccurrences.reduce((map, occurrence) => {
@@ -165,12 +135,14 @@ export default function Home() {
 
   function selectDay(iso) {
     setSelectedDay(iso);
+    setHasActiveSelection(true);
     setDraft((current) => ({ ...current, startDate: iso }));
   }
 
   function selectCalendarDate(date) {
     const iso = toISODate(date);
     selectDay(iso);
+    setHasActiveSelection(true);
     if (date.getFullYear() !== year || date.getMonth() !== monthIndex) {
       setSelectedMonth(new Date(date.getFullYear(), date.getMonth(), 1));
     }
@@ -190,7 +162,9 @@ export default function Home() {
       ? todayISO
       : toISODate(next);
     setSelectedMonth(next);
-    selectDay(nextDay);
+    setSelectedDay(nextDay);
+    setHasActiveSelection(false);
+    setDraft((current) => ({ ...current, startDate: nextDay }));
   }
 
   function startNew(type = "expense", date = selectedDay) {
@@ -225,7 +199,6 @@ export default function Home() {
     event.preventDefault();
     setSaving(true);
     setError("");
-    const wasEditing = Boolean(editingId);
 
     const response = await fetch(editingId ? `/api/items/${editingId}` : "/api/items", {
       method: editingId ? "PUT" : "POST",
@@ -241,32 +214,16 @@ export default function Home() {
     }
 
     await loadItems();
-    if (wasEditing) {
-      setEditingId(data.item.id);
-      setDraft({
-        type: data.item.type,
-        name: data.item.name,
-        description: data.item.description,
-        amount: String(data.item.amount),
-        startDate: data.item.startDate,
-        recurrenceMonths: Number(data.item.recurrenceMonths || 0)
-      });
-    } else {
-      setEditingId(null);
-      setDraft(blankDraft(data.item.type, data.item.startDate || selectedDay));
-    }
     setSaving(false);
+    closeDrawer();
   }
 
   async function deleteItem() {
-    if (!editingId) {
-      return;
-    }
-
+    if (!editingId) return;
     setSaving(true);
     await fetch(`/api/items/${editingId}`, { method: "DELETE" });
     setSaving(false);
-    startNew();
+    closeDrawer();
     await loadItems();
   }
 
@@ -275,398 +232,491 @@ export default function Home() {
 
   return (
     <main className="app-shell">
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} flowCount={items.length} />
+
       <header className="masthead rise rise-1">
-        <div className="masthead-brand">
-          <div className="brand-mark" aria-hidden>
-            <img src="/subflow-mark.png" alt="" />
-          </div>
-          <div className="masthead-words">
-            <p className="eyebrow with-rule">Personal ledger / est. {today.getFullYear()}</p>
-            <h1 className="wordmark">
-              Sub<em>Flow</em>
-            </h1>
-          </div>
+        <div className="masthead-words">
+          <p className="eyebrow">Local-first finance ledger</p>
+          <h1 className="wordmark">
+            Sub<em>Flow</em>
+          </h1>
         </div>
 
-        <div className="masthead-meta">
+        <div className="masthead-meta" aria-label="Month context">
           <button className="icon-button" onClick={() => shiftMonth(-1)} aria-label="Previous month">
-            <ArrowLeft size={17} />
+            <ArrowLeft size={16} />
           </button>
-          <div className="month-chip" aria-live="polite">{monthLabel}</div>
+          <span className="month-chip" aria-live="polite">{monthLabel}</span>
           <button className="icon-button" onClick={() => shiftMonth(1)} aria-label="Next month">
-            <ArrowRight size={17} />
-          </button>
-          <button
-            className="today-button"
-            onClick={() => {
-              setSelectedMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-              selectDay(todayISO);
-            }}
-          >
-            <CalendarDays size={15} />
-            Today
+            <ArrowRight size={16} />
           </button>
         </div>
       </header>
 
       <section className="metric-row rise rise-2" aria-label="Monthly summary">
-        <Metric
-          eyebrow="Income"
-          label={monthLabelShort}
-          value={formatMoney(totals.income)}
-          tone="income"
-          icon={TrendingUp}
-        />
-        <Metric
-          eyebrow="Expenses"
-          label={monthLabelShort}
-          value={formatMoney(totals.expense)}
-          tone="expense"
-          icon={TrendingDown}
-        />
-        <Metric
-          eyebrow="Net"
-          label={monthLabelShort}
-          value={formatMoney(balance)}
-          tone={balance >= 0 ? "income" : "expense"}
-          icon={CircleDollarSign}
-        />
+        <Metric eyebrow="Income" label={monthLabelShort} value={formatMoney(totals.income)} tone="income" icon={TrendingUp} />
+        <Metric eyebrow="Expenses" label={monthLabelShort} value={formatMoney(totals.expense)} tone="expense" icon={TrendingDown} />
+        <Metric eyebrow="Net" label={monthLabelShort} value={formatMoney(balance)} tone={balance >= 0 ? "income" : "expense"} icon={CircleDollarSign} />
       </section>
 
       <div className="workspace-grid">
-        <div className="workspace-stack">
-          <section className="panel rise rise-3" aria-label="Calendar">
-            <div className="panel-head">
-              <div className="stack">
-                <p className="eyebrow">Infinite calendar</p>
-                <h2 className="panel-title">
-                  {selectedMonth.toLocaleDateString(undefined, { month: "long" })} <em>{year}</em>
-                </h2>
-              </div>
-              <button className="new-button" onClick={() => startNew("expense", selectedDay)}>
-                <Plus size={16} />
-                New flow
-              </button>
-            </div>
-
-            <div className="calendar-grid weekday-grid">
-              {weekDays.map((day) => (
-                <div key={day}>{day}</div>
-              ))}
-            </div>
-
-            <div className="calendar-grid day-grid" role="grid">
-              {buildCalendarDays(selectedMonth).map((date) => {
-                const iso = toISODate(date);
-                const occurrences = occurrenceByDay[iso] || [];
-                const isCurrentMonth = date.getMonth() === monthIndex;
-                const isToday = iso === todayISO;
-                const isSelected = iso === selectedDay;
-                const incomeCount = occurrences.filter((item) => item.type === "income").length;
-                const expenseCount = occurrences.filter((item) => item.type === "expense").length;
-                const net = occurrences.reduce(
-                  (sum, item) => sum + (item.type === "income" ? Number(item.amount) : -Number(item.amount)),
-                  0
-                );
-
-                return (
-                  <button
-                    key={iso}
-                    className={[
-                      "day-cell",
-                      isCurrentMonth ? "" : "outside-month",
-                      isToday ? "is-today" : "",
-                      isSelected ? "is-selected" : ""
-                    ].filter(Boolean).join(" ")}
-                    onClick={() => selectCalendarDate(date)}
-                    aria-label={date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
-                    aria-pressed={isSelected}
-                  >
-                    <span className="day-number">{date.getDate()}</span>
-                    {occurrences.length > 0 && (
-                      <span className="day-signals">
-                        {incomeCount > 0 && <span className="signal income">{incomeCount} in</span>}
-                        {expenseCount > 0 && <span className="signal expense">{expenseCount} out</span>}
-                      </span>
-                    )}
-                    {occurrences.length > 0 && <span className="day-net">{formatMoney(net)}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="panel rise rise-4" aria-label="Annual rhythm">
-            <div className="panel-head">
-              <div className="stack">
-                <p className="eyebrow">Annual rhythm</p>
-                <h2 className="panel-title">
-                  Income &amp; expenses <em>{year}</em>
-                </h2>
-              </div>
-              <div className="mini-nav" role="group" aria-label="Year navigation">
-                <button onClick={() => setSelectedMonth(new Date(year - 1, monthIndex, 1))} aria-label="Previous year">
-                  <ArrowLeft size={15} />
-                </button>
-                <button onClick={() => setSelectedMonth(new Date(year + 1, monthIndex, 1))} aria-label="Next year">
-                  <ArrowRight size={15} />
-                </button>
-              </div>
-            </div>
-            <div className="chart-shell">
-              <div className="chart-wrap">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 12, right: 8, left: -12, bottom: 0 }} barCategoryGap={18}>
-                    <CartesianGrid vertical={false} stroke="rgba(26, 29, 31, 0.10)" strokeDasharray="2 4" />
-                    <XAxis
-                      dataKey="month"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: "var(--muted-strong)", fontSize: 11, fontFamily: "var(--font-mono)", letterSpacing: 1 }}
-                      dy={6}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: "var(--muted-strong)", fontSize: 11, fontFamily: "var(--font-mono)" }}
-                      tickFormatter={(value) => `$${Math.round(value)}`}
-                      width={56}
-                    />
-                    <Tooltip
-                      cursor={{ fill: "rgba(19, 94, 79, 0.06)" }}
-                      formatter={(value, name) => [formatMoney(value), name]}
-                      contentStyle={{
-                        background: "var(--paper-strong)",
-                        border: "1px solid var(--rule-strong)",
-                        borderRadius: 2,
-                        fontFamily: "var(--font-body)",
-                        fontSize: 12,
-                        boxShadow: "0 16px 32px -20px rgba(26, 29, 31, 0.4)"
-                      }}
-                      labelStyle={{ fontFamily: "var(--font-display)", fontWeight: 500, color: "var(--ink)" }}
-                    />
-                    <Bar dataKey="income" name="Income" fill="var(--income)" radius={[1, 1, 0, 0]} />
-                    <Bar dataKey="expense" name="Expenses" fill="var(--expense)" radius={[1, 1, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-                {!chartHasData && <div className="chart-empty">No flows recorded for {year} yet.</div>}
-              </div>
-              <div className="chart-legend">
-                <span className="lg-income">Income</span>
-                <span className="lg-expense">Expenses</span>
-              </div>
-              <div className="month-money-strip" aria-label="Monthly saved and spent totals">
-                {chartData.map((row) => {
-                  const balanceIsPositive = Number(row.balance) >= 0;
-                  return (
-                    <div className="month-money" key={row.month}>
-                      <span className="month-money-name">{row.month}</span>
-                      <span className={balanceIsPositive ? "month-saved" : "month-saved negative"}>
-                        {balanceIsPositive ? "+" : "-"}{formatMoney(Math.abs(row.balance))}
-                      </span>
-                      <span className="month-spent">-{formatMoney(row.expense)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <aside className={`side-rail${drawerOpen ? " drawer-open" : ""}`}>
-          <section className="panel rise rise-3" aria-label="Selected day">
-            <div className="panel-head">
-              <div className="stack">
-                <p className="eyebrow">Selected day</p>
-                <h2 className="panel-title">
-                  {selectedDate.toLocaleDateString(undefined, { weekday: "long" })}{" "}
-                  <em>
-                    {selectedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                  </em>
-                </h2>
-              </div>
-              <button className="icon-button small" onClick={() => startNew("income", selectedDay)} aria-label="Add income on selected day">
-                <Plus size={15} />
-              </button>
-            </div>
-
-            <div className="list-scroll">
-              {dayOccurrences.length === 0 ? (
-                <EmptyState title="Nothing scheduled" />
-              ) : (
-                dayOccurrences.map((item) => (
-                  <FlowRow key={`${item.id}-${item.occurrenceDate}`} item={item} onEdit={() => editItem(item)} />
-                ))
-              )}
-            </div>
-          </section>
-
-          <section
-            className={`panel rise rise-4 form-panel${editingId ? " is-editing" : ""}`}
-            aria-label={editingId ? "Edit flow" : "Create flow"}
-          >
-            <div className="panel-head">
-              <div className="stack">
-                <p className="eyebrow">{editingId ? "Edit flow" : "Create flow"}</p>
-                <h2 className="panel-title">
-                  {editingId ? draft.name || <em>Untitled</em> : <>New <em>entry</em></>}
-                </h2>
-              </div>
-              <button
-                type="button"
-                className="icon-button small editor-close"
-                onClick={closeDrawer}
-                aria-label="Close editor"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <form className="flow-form" onSubmit={saveItem}>
-              <div className="segmented" role="tablist" aria-label="Flow type">
-                <button
-                  type="button"
-                  className={draft.type === "income" ? "active income" : ""}
-                  onClick={() => setDraft((current) => ({ ...current, type: "income" }))}
-                  aria-pressed={draft.type === "income"}
-                >
-                  <TrendingUp size={15} />
-                  Income
-                </button>
-                <button
-                  type="button"
-                  className={draft.type === "expense" ? "active expense" : ""}
-                  onClick={() => setDraft((current) => ({ ...current, type: "expense" }))}
-                  aria-pressed={draft.type === "expense"}
-                >
-                  <TrendingDown size={15} />
-                  Expense
-                </button>
-              </div>
-
-              <label>
-                <span>Name</span>
-                <input
-                  value={draft.name}
-                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                  placeholder="Rent, Salary, Spotify..."
-                  required
-                />
-              </label>
-
-              <label>
-                <span>Note</span>
-                <textarea
-                  value={draft.description}
-                  onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-                  rows={3}
-                  placeholder="Optional context"
-                />
-              </label>
-
-              <div className="form-grid">
-                <label>
-                  <span>Amount</span>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={draft.amount}
-                    onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Date</span>
-                  <input
-                    type="date"
-                    value={draft.startDate}
-                    onChange={(event) => changeDraftDate(event.target.value)}
-                    required
-                  />
-                </label>
-              </div>
-
-              <label>
-                <span>Repeats</span>
-                <select
-                  value={draft.recurrenceMonths}
-                  onChange={(event) => setDraft({ ...draft, recurrenceMonths: Number(event.target.value) })}
-                >
-                  <option value={0}>One time only</option>
-                  {Array.from({ length: 12 }, (_, index) => index + 1).map((months) => (
-                    <option key={months} value={months}>
-                      Every {months} {months === 1 ? "month" : "months"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {error && <p className="form-error" role="alert">{error}</p>}
-
-              <div className="form-actions">
-                {editingId && (
-                  <button type="button" className="danger-button" onClick={deleteItem} disabled={saving}>
-                    <Trash2 size={15} />
-                    Delete
-                  </button>
-                )}
-                <button type="submit" className="save-button" disabled={saving}>
-                  {saving ? <RefreshCw className="spin" size={15} /> : <Check size={15} />}
-                  {editingId ? "Save changes" : "Create flow"}
-                </button>
-              </div>
-            </form>
-          </section>
-
-          <section className="panel rise rise-4" aria-label="All flows">
-            <div className="panel-head">
-              <div className="stack">
-                <p className="eyebrow">All flows</p>
-                <h2 className="panel-title">
-                  {items.length} <em>saved</em>
-                </h2>
-              </div>
-            </div>
-
-            <div className="search-box">
-              <Search size={15} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search by name or note"
-                aria-label="Search flows"
+        <section
+          className="main-content"
+          role="region"
+          aria-label={activeTab === "calendar" ? "Calendar view" : "Graphs view"}
+        >
+          <div key={activeTab} className="tab-content">
+            {activeTab === "calendar" ? (
+              <CalendarPanel
+                selectedMonth={selectedMonth}
+                year={year}
+                selectedDay={selectedDay}
+                todayISO={todayISO}
+                monthIndex={monthIndex}
+                occurrenceByDay={occurrenceByDay}
+                selectCalendarDate={selectCalendarDate}
+                startNew={startNew}
+                hasActiveSelection={hasActiveSelection}
               />
-            </div>
+            ) : (
+              <GraphPanel
+                chartData={chartData}
+                year={year}
+                chartHasData={chartHasData}
+                setSelectedMonth={setSelectedMonth}
+                monthIndex={monthIndex}
+              />
+            )}
+          </div>
+        </section>
 
-            <div className="list-scroll all-flows-list">
-              {loading ? (
-                <EmptyState title="Loading flows" />
-              ) : filteredItems.length === 0 ? (
-                <EmptyState title={query ? "No matches" : "No saved flows yet"} />
-              ) : (
-                filteredItems.map((item) => (
-                  <FlowRow key={item.id} item={item} onEdit={() => editItem(item)} editing={editingId === item.id} />
-                ))
-              )}
-            </div>
-          </section>
+        <aside className="side-rail">
+          <SelectedDayPanel
+            selectedDate={selectedDate}
+            dayOccurrences={dayOccurrences}
+            editItem={editItem}
+            startNew={startNew}
+            selectedDay={selectedDay}
+            hasActiveSelection={hasActiveSelection}
+          />
+          <AllFlowsPanel
+            monthLabelShort={monthLabelShort}
+            monthlyItems={monthlyItems}
+            loading={loading}
+            filteredItems={filteredItems}
+            query={query}
+            setQuery={setQuery}
+            editItem={editItem}
+            editingId={editingId}
+          />
         </aside>
       </div>
 
       <footer className="app-foot">
-        <span><strong>SubFlow</strong> - local-first finance ledger</span>
+        <span><strong>SubFlow</strong> &middot; local-first finance ledger</span>
         <span>{items.length.toString().padStart(3, "0")} flows / {monthLabelShort}</span>
       </footer>
 
+      {drawerOpen && (
+        <FormModal
+          editingId={editingId}
+          draft={draft}
+          setDraft={setDraft}
+          saveItem={saveItem}
+          closeDrawer={closeDrawer}
+          saving={saving}
+          error={error}
+          deleteItem={deleteItem}
+          changeDraftDate={changeDraftDate}
+        />
+      )}
+    </main>
+  );
+}
+
+function Sidebar({ activeTab, setActiveTab, flowCount }) {
+  const tabs = [
+    { id: "calendar", label: "Calendar", icon: CalendarDays },
+    { id: "graphs", label: "Graphs", icon: BarChart3 }
+  ];
+  return (
+    <aside className="app-rail rise rise-1" aria-label="Primary navigation">
+      <div className="rail-mark" aria-hidden>
+        <img src="/subflow-mark.png" alt="" />
+      </div>
+      <nav className="rail-tabs" aria-label="Views">
+        {tabs.map(({ id, label, icon: Icon }) => {
+          const isActive = activeTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              className="rail-tab"
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => setActiveTab(id)}
+            >
+              <Icon size={18} aria-hidden />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
+      <div className="rail-foot" aria-hidden>
+        <span>{flowCount.toString().padStart(3, "0")}</span>
+      </div>
+    </aside>
+  );
+}
+
+function CalendarPanel({ selectedMonth, year, selectedDay, todayISO, monthIndex, occurrenceByDay, selectCalendarDate, startNew, hasActiveSelection }) {
+  const selectedDateObj = parseISODate(selectedDay);
+  return (
+    <section className="panel calendar-panel" aria-label="Calendar">
+      <div className="panel-head">
+        <div className="stack">
+          <p className="eyebrow">Infinite calendar</p>
+          <h2 className="panel-title">
+            {selectedMonth.toLocaleDateString(undefined, { month: "long" })} <em>{year}</em>
+          </h2>
+        </div>
+        <button
+          className="new-button"
+          onClick={() => startNew("expense", selectedDay)}
+          disabled={!hasActiveSelection}
+          aria-label={
+            hasActiveSelection && selectedDateObj
+              ? `Add flow on ${selectedDateObj.toLocaleDateString(undefined, { month: "long", day: "numeric" })}`
+              : "Pick a day to add a flow"
+          }
+        >
+          <Plus size={16} />
+          {hasActiveSelection && selectedDateObj
+            ? `Add on ${selectedDateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+            : "Pick a day"}
+        </button>
+      </div>
+
+      <div className="calendar-grid weekday-grid">
+        {weekDays.map((day) => (
+          <div key={day}>{day}</div>
+        ))}
+      </div>
+
+      <div className="calendar-grid day-grid" role="grid">
+        {buildCalendarDays(selectedMonth).map((date) => {
+          const iso = toISODate(date);
+          const occurrences = occurrenceByDay[iso] || [];
+          const isCurrentMonth = date.getMonth() === monthIndex;
+          const isToday = iso === todayISO;
+          const isSelected = iso === selectedDay;
+          const incomeCount = occurrences.filter((item) => item.type === "income").length;
+          const expenseCount = occurrences.filter((item) => item.type === "expense").length;
+          const net = occurrences.reduce(
+            (sum, item) => sum + (item.type === "income" ? Number(item.amount) : -Number(item.amount)),
+            0
+          );
+
+          return (
+            <button
+              key={iso}
+              type="button"
+              className={[
+                "day-cell",
+                isCurrentMonth ? "" : "outside-month",
+                isToday ? "is-today" : "",
+                isSelected ? "is-selected" : ""
+              ].filter(Boolean).join(" ")}
+              onClick={() => selectCalendarDate(date)}
+              aria-label={date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+              aria-pressed={isSelected}
+            >
+              <span className="day-number">{date.getDate()}</span>
+              {occurrences.length > 0 && (
+                <span className="day-signals">
+                  {incomeCount > 0 && <span className="signal income">{incomeCount} in</span>}
+                  {expenseCount > 0 && <span className="signal expense">{expenseCount} out</span>}
+                </span>
+              )}
+              {occurrences.length > 0 && <span className="day-net">{formatMoney(net)}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function GraphPanel({ chartData, year, chartHasData, setSelectedMonth, monthIndex }) {
+  return (
+    <section className="panel" aria-label="Annual rhythm">
+      <div className="panel-head">
+        <div className="stack">
+          <p className="eyebrow">Annual rhythm</p>
+          <h2 className="panel-title">
+            Income &amp; expenses <em>{year}</em>
+          </h2>
+        </div>
+        <div className="mini-nav" role="group" aria-label="Year navigation">
+          <button onClick={() => setSelectedMonth(new Date(year - 1, monthIndex, 1))} aria-label="Previous year">
+            <ArrowLeft size={15} />
+          </button>
+          <button onClick={() => setSelectedMonth(new Date(year + 1, monthIndex, 1))} aria-label="Next year">
+            <ArrowRight size={15} />
+          </button>
+        </div>
+      </div>
+      <div className="chart-shell">
+        <div className="chart-wrap">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 12, right: 8, left: -12, bottom: 0 }} barCategoryGap={18}>
+              <CartesianGrid vertical={false} stroke="rgba(26, 29, 31, 0.10)" strokeDasharray="2 4" />
+              <XAxis
+                dataKey="month"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "var(--muted-strong)", fontSize: 11, fontFamily: "var(--font-mono)", letterSpacing: 1 }}
+                dy={6}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "var(--muted-strong)", fontSize: 11, fontFamily: "var(--font-mono)" }}
+                tickFormatter={(value) => `$${Math.round(value)}`}
+                width={56}
+              />
+              <Tooltip
+                cursor={{ fill: "rgba(19, 94, 79, 0.06)" }}
+                formatter={(value, name) => [formatMoney(value), name]}
+                contentStyle={{
+                  background: "var(--paper-strong)",
+                  border: "1px solid var(--rule-strong)",
+                  borderRadius: 2,
+                  fontFamily: "var(--font-body)",
+                  fontSize: 12,
+                  boxShadow: "0 16px 32px -20px rgba(26, 29, 31, 0.4)"
+                }}
+                labelStyle={{ fontFamily: "var(--font-display)", fontWeight: 500, color: "var(--ink)" }}
+              />
+              <Bar dataKey="income" name="Income" fill="var(--income)" radius={[1, 1, 0, 0]} />
+              <Bar dataKey="expense" name="Expenses" fill="var(--expense)" radius={[1, 1, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          {!chartHasData && <div className="chart-empty">No flows recorded for {year} yet.</div>}
+        </div>
+        <div className="chart-legend">
+          <span className="lg-income">Income</span>
+          <span className="lg-expense">Expenses</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SelectedDayPanel({ selectedDate, dayOccurrences, editItem, startNew, selectedDay, hasActiveSelection }) {
+  return (
+    <section className="panel side-panel rise rise-3" aria-label="Selected day">
+      <div className="panel-head">
+        <div className="stack">
+          <p className="eyebrow">Selected day</p>
+          <h2 className="panel-title">
+            {selectedDate.toLocaleDateString(undefined, { weekday: "long" })}{" "}
+            <em>
+              {selectedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </em>
+          </h2>
+        </div>
+        {hasActiveSelection && (
+          <button
+            className="icon-button small"
+            onClick={() => startNew("expense", selectedDay)}
+            aria-label="Add flow on selected day"
+          >
+            <Plus size={15} />
+          </button>
+        )}
+      </div>
+
+      <div className="list-scroll selected-day-list">
+        {dayOccurrences.length === 0 ? (
+          <EmptyState title={hasActiveSelection ? "Nothing scheduled" : "Pick a day from the calendar"} />
+        ) : (
+          dayOccurrences.map((item) => (
+            <FlowRow key={`${item.id}-${item.occurrenceDate}`} item={item} onEdit={() => editItem(item)} />
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FormModal({ editingId, draft, setDraft, saveItem, closeDrawer, saving, error, deleteItem, changeDraftDate }) {
+  return (
+    <div className="modal-root" role="dialog" aria-modal="true" aria-label={editingId ? "Edit flow" : "Create flow"}>
       <button
         type="button"
-        className={`drawer-backdrop${drawerOpen ? " is-open" : ""}`}
+        className="modal-backdrop"
         onClick={closeDrawer}
         tabIndex={-1}
         aria-hidden="true"
       />
-    </main>
+      <section className={`modal-card${editingId ? " is-editing" : ""}`}>
+        <header className="modal-head">
+          <div className="stack">
+            <p className="eyebrow">{editingId ? "Edit flow" : "Create flow"}</p>
+            <h2 className="panel-title">
+              {editingId ? draft.name || <em>Untitled</em> : <>New <em>entry</em></>}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="icon-button small"
+            onClick={closeDrawer}
+            aria-label="Close"
+          >
+            <X size={15} />
+          </button>
+        </header>
+
+        <form className="flow-form" onSubmit={saveItem}>
+          <fieldset className="segmented" aria-label="Flow type">
+            <button
+              type="button"
+              className={draft.type === "income" ? "active income" : ""}
+              onClick={() => setDraft((current) => ({ ...current, type: "income" }))}
+              aria-pressed={draft.type === "income"}
+            >
+              <TrendingUp size={15} />
+              Income
+            </button>
+            <button
+              type="button"
+              className={draft.type === "expense" ? "active expense" : ""}
+              onClick={() => setDraft((current) => ({ ...current, type: "expense" }))}
+              aria-pressed={draft.type === "expense"}
+            >
+              <TrendingDown size={15} />
+              Expense
+            </button>
+          </fieldset>
+
+          <label>
+            <span>Name</span>
+            <input
+              value={draft.name}
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              placeholder="Rent, Salary, Spotify..."
+              maxLength={80}
+              autoFocus
+              required
+            />
+          </label>
+
+          <label>
+            <span>Note</span>
+            <textarea
+              value={draft.description}
+              onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+              rows={2}
+              maxLength={240}
+              placeholder="Optional context"
+            />
+          </label>
+
+          <div className="form-grid">
+            <label>
+              <span>Amount</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={draft.amount}
+                onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
+                required
+              />
+            </label>
+            <label>
+              <span>Date</span>
+              <input
+                type="date"
+                value={draft.startDate}
+                onChange={(event) => changeDraftDate(event.target.value)}
+                required
+              />
+            </label>
+          </div>
+
+          <label>
+            <span>Repeats</span>
+            <select
+              value={draft.recurrenceMonths}
+              onChange={(event) => setDraft({ ...draft, recurrenceMonths: Number(event.target.value) })}
+            >
+              <option value={0}>One time only</option>
+              {Array.from({ length: 12 }, (_, index) => index + 1).map((months) => (
+                <option key={months} value={months}>
+                  Every {months} {months === 1 ? "month" : "months"}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {error && <p className="form-error" role="alert">{error}</p>}
+
+          <div className="form-actions">
+            {editingId && (
+              <button type="button" className="danger-button" onClick={deleteItem} disabled={saving}>
+                <Trash2 size={15} />
+                Delete
+              </button>
+            )}
+            <button type="button" className="ghost-button" onClick={closeDrawer} disabled={saving}>
+              Cancel
+            </button>
+            <button type="submit" className="save-button" disabled={saving}>
+              {saving ? <RefreshCw className="spin" size={15} /> : <Check size={15} />}
+              {editingId ? "Save changes" : "Create flow"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function AllFlowsPanel({ monthLabelShort, monthlyItems, loading, filteredItems, query, setQuery, editItem, editingId }) {
+  return (
+    <section className="panel side-panel rise rise-4" aria-label="All flows this month">
+      <div className="panel-head">
+        <div className="stack">
+          <p className="eyebrow">All flows &middot; {monthLabelShort}</p>
+          <h2 className="panel-title">
+            {monthlyItems.length} <em>this month</em>
+          </h2>
+        </div>
+      </div>
+
+      <div className="search-box">
+        <Search size={15} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by name or note"
+          aria-label="Search flows"
+        />
+      </div>
+
+      <div className="list-scroll all-flows-list">
+        {loading ? (
+          <EmptyState title="Loading flows" />
+        ) : filteredItems.length === 0 ? (
+          <EmptyState title={query ? "No matches" : "No flows in this month"} />
+        ) : (
+          filteredItems.map((item) => (
+            <FlowRow key={item.id} item={item} onEdit={() => editItem(item)} editing={editingId === item.id} />
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -694,7 +744,7 @@ function FlowRow({ item, onEdit, editing = false }) {
     <div className={`flow-row ${item.type} ${editing ? "editing" : ""}`}>
       <span className="flow-icon">{item.type === "income" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}</span>
       <span className="flow-copy">
-        <strong>{item.name || "Untitled"}</strong>
+        <strong title={item.name || "Untitled"}>{item.name || "Untitled"}</strong>
         <small>
           <Clock3 size={11} />
           {recurrence === 0 ? "One time" : `Every ${recurrence} ${recurrence === 1 ? "month" : "months"}`}
