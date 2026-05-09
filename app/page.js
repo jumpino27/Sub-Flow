@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -63,6 +63,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("calendar");
+  const modalReturnFocusRef = useRef(null);
 
   async function loadItems() {
     setLoading(true);
@@ -75,20 +76,6 @@ export default function Home() {
   useEffect(() => {
     loadItems();
   }, []);
-
-  // Close modal on Escape
-  useEffect(() => {
-    if (!drawerOpen) return;
-    function onKey(event) {
-      if (event.key === "Escape") {
-        setDrawerOpen(false);
-        setEditingId(null);
-        setError("");
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [drawerOpen]);
 
   const year = selectedMonth.getFullYear();
   const monthIndex = selectedMonth.getMonth();
@@ -168,6 +155,7 @@ export default function Home() {
   }
 
   function startNew(type = "expense", date = selectedDay) {
+    modalReturnFocusRef.current = document.activeElement;
     setEditingId(null);
     setDraft(blankDraft(type, date));
     setError("");
@@ -175,6 +163,7 @@ export default function Home() {
   }
 
   function editItem(item) {
+    modalReturnFocusRef.current = document.activeElement;
     setEditingId(item.id);
     setDraft({
       type: item.type,
@@ -193,6 +182,11 @@ export default function Home() {
     setEditingId(null);
     setDraft(blankDraft("expense", selectedDay));
     setError("");
+    const returnTarget = modalReturnFocusRef.current;
+    modalReturnFocusRef.current = null;
+    if (returnTarget && typeof returnTarget.focus === "function") {
+      requestAnimationFrame(() => returnTarget.focus());
+    }
   }
 
   async function saveItem(event) {
@@ -379,21 +373,16 @@ function CalendarPanel({ selectedMonth, year, selectedDay, todayISO, monthIndex,
             {selectedMonth.toLocaleDateString(undefined, { month: "long" })} <em>{year}</em>
           </h2>
         </div>
-        <button
-          className="new-button"
-          onClick={() => startNew("expense", selectedDay)}
-          disabled={!hasActiveSelection}
-          aria-label={
-            hasActiveSelection && selectedDateObj
-              ? `Add flow on ${selectedDateObj.toLocaleDateString(undefined, { month: "long", day: "numeric" })}`
-              : "Pick a day to add a flow"
-          }
-        >
-          <Plus size={16} />
-          {hasActiveSelection && selectedDateObj
-            ? `Add on ${selectedDateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
-            : "Pick a day"}
-        </button>
+        {hasActiveSelection && selectedDateObj && (
+          <button
+            className="new-button"
+            onClick={() => startNew("expense", selectedDay)}
+            aria-label={`Add flow on ${selectedDateObj.toLocaleDateString(undefined, { month: "long", day: "numeric" })}`}
+          >
+            <Plus size={16} />
+            Add on {selectedDateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+          </button>
+        )}
       </div>
 
       <div className="calendar-grid weekday-grid">
@@ -402,7 +391,7 @@ function CalendarPanel({ selectedMonth, year, selectedDay, todayISO, monthIndex,
         ))}
       </div>
 
-      <div className="calendar-grid day-grid" role="grid">
+      <div className="calendar-grid day-grid" aria-label="Choose a date">
         {buildCalendarDays(selectedMonth).map((date) => {
           const iso = toISODate(date);
           const occurrences = occurrenceByDay[iso] || [];
@@ -428,6 +417,7 @@ function CalendarPanel({ selectedMonth, year, selectedDay, todayISO, monthIndex,
               ].filter(Boolean).join(" ")}
               onClick={() => selectCalendarDate(date)}
               aria-label={date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+              aria-current={isToday ? "date" : undefined}
               aria-pressed={isSelected}
             >
               <span className="day-number">{date.getDate()}</span>
@@ -550,8 +540,68 @@ function SelectedDayPanel({ selectedDate, dayOccurrences, editItem, startNew, se
 }
 
 function FormModal({ editingId, draft, setDraft, saveItem, closeDrawer, saving, error, deleteItem, changeDraftDate }) {
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    const firstField = modalRef.current?.querySelector("[data-autofocus]");
+    firstField?.focus();
+  }, []);
+
+  function handleModalKeyDown(event) {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      closeDrawer();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(
+      modalRef.current?.querySelectorAll(
+        'button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      ) || []
+    ).filter((node) => node.offsetParent !== null);
+
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function chooseType(type) {
+    setDraft((current) => ({ ...current, type }));
+  }
+
+  function handleTypeKeyDown(event) {
+    const keys = ["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"];
+    if (!keys.includes(event.key)) return;
+
+    event.preventDefault();
+    const options = ["income", "expense"];
+    const currentIndex = options.indexOf(draft.type);
+    const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+    const nextType = options[(currentIndex + direction + options.length) % options.length];
+    chooseType(nextType);
+    event.currentTarget.querySelector(`[data-flow-type="${nextType}"]`)?.focus();
+  }
+
   return (
-    <div className="modal-root" role="dialog" aria-modal="true" aria-label={editingId ? "Edit flow" : "Create flow"}>
+    <div
+      className="modal-root"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="flow-modal-title"
+      onKeyDown={handleModalKeyDown}
+      ref={modalRef}
+    >
       <button
         type="button"
         className="modal-backdrop"
@@ -563,7 +613,7 @@ function FormModal({ editingId, draft, setDraft, saveItem, closeDrawer, saving, 
         <header className="modal-head">
           <div className="stack">
             <p className="eyebrow">{editingId ? "Edit flow" : "Create flow"}</p>
-            <h2 className="panel-title">
+            <h2 className="panel-title" id="flow-modal-title">
               {editingId ? draft.name || <em>Untitled</em> : <>New <em>entry</em></>}
             </h2>
           </div>
@@ -578,12 +628,21 @@ function FormModal({ editingId, draft, setDraft, saveItem, closeDrawer, saving, 
         </header>
 
         <form className="flow-form" onSubmit={saveItem}>
-          <fieldset className="segmented" aria-label="Flow type">
+          <fieldset
+            className="segmented"
+            role="radiogroup"
+            aria-labelledby="flow-type-label"
+            onKeyDown={handleTypeKeyDown}
+          >
+            <legend className="sr-only" id="flow-type-label">Flow type</legend>
             <button
               type="button"
               className={draft.type === "income" ? "active income" : ""}
-              onClick={() => setDraft((current) => ({ ...current, type: "income" }))}
-              aria-pressed={draft.type === "income"}
+              onClick={() => chooseType("income")}
+              role="radio"
+              aria-checked={draft.type === "income"}
+              tabIndex={draft.type === "income" ? 0 : -1}
+              data-flow-type="income"
             >
               <TrendingUp size={15} />
               Income
@@ -591,8 +650,11 @@ function FormModal({ editingId, draft, setDraft, saveItem, closeDrawer, saving, 
             <button
               type="button"
               className={draft.type === "expense" ? "active expense" : ""}
-              onClick={() => setDraft((current) => ({ ...current, type: "expense" }))}
-              aria-pressed={draft.type === "expense"}
+              onClick={() => chooseType("expense")}
+              role="radio"
+              aria-checked={draft.type === "expense"}
+              tabIndex={draft.type === "expense" ? 0 : -1}
+              data-flow-type="expense"
             >
               <TrendingDown size={15} />
               Expense
@@ -606,7 +668,7 @@ function FormModal({ editingId, draft, setDraft, saveItem, closeDrawer, saving, 
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
               placeholder="Rent, Salary, Spotify..."
               maxLength={80}
-              autoFocus
+              data-autofocus
               required
             />
           </label>
